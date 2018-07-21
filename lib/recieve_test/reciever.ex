@@ -13,19 +13,19 @@ defmodule Reciever do
     selective_receive()
   end
 
-  def test1(total_messages) do
+  def test1(msg_head, total_messages) do
     loop_pid = spawn(&Reciever.selective_receive/0)
     Process.register(spawn(fn -> stats(total_messages) end), :stats)
-    send_messages(loop_pid, "scnenario1_test", total_messages)
+    spawn(fn -> send_messages(loop_pid, msg_head, total_messages) end)
   end
 
   defp send_messages(pid, msg, total_messages) do
     Task.async_stream(
       1..total_messages,
       fn _ ->
-        send(pid, msg <> "_some_binary")
+        send(pid, msg <> EntropyString.token())
       end,
-      max_concurrency: 300
+      max_concurrency: 1000
     )
     |> Enum.map(fn x -> x end)
 

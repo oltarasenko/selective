@@ -1,5 +1,21 @@
 defmodule Reciever do
-  def selective_receive() do
+  def receive_messages(type, expected_queue_len) do
+    {_, len} = Process.info(self(), :message_queue_len)
+    # IO.puts("Queue, length: #{len}")
+
+    case len >= expected_queue_len do
+      true ->
+        IO.puts("Start processing mailbox")
+        do_receive(type)
+
+      false ->
+        # IO.puts("Accomulating mailbox messages")
+        :timer.sleep(500)
+        receive_messages(type, expected_queue_len)
+    end
+  end
+
+  defp do_receive(:selective) do
     receive do
       "scnenario1" <> _rest -> :ok
       "scnenario2" <> _rest -> :ok
@@ -10,13 +26,23 @@ defmodule Reciever do
 
     message_queue_len = Process.info(self(), :message_queue_len)
     send(:stats, message_queue_len)
-    selective_receive()
+    do_receive(:selective)
   end
 
-  def test1(msg_head, total_messages) do
-    loop_pid = spawn(&Reciever.selective_receive/0)
+  defp do_receive(:raw) do
+    receive do
+      _ -> :ok
+    end
+
+    message_queue_len = Process.info(self(), :message_queue_len)
+    send(:stats, message_queue_len)
+    do_receive(:raw)
+  end
+
+  def test1(type, msg_head, total_messages) do
     Process.register(spawn(fn -> stats(total_messages) end), :stats)
-    spawn(fn -> send_messages(loop_pid, msg_head, total_messages) end)
+    loop_pid = spawn(fn -> Reciever.receive_messages(type, total_messages) end)
+    send_messages(loop_pid, msg_head, total_messages)
   end
 
   defp send_messages(pid, msg, total_messages) do

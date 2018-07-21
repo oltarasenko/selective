@@ -1,5 +1,5 @@
 defmodule Reciever do
-  def loop() do
+  def selective_receive() do
     receive do
       "scnenario1" <> _rest -> :ok
       "scnenario2" <> _rest -> :ok
@@ -8,15 +8,15 @@ defmodule Reciever do
       _ -> :ok
     end
 
-    {_, len} = Process.info(self(), :message_queue_len)
-    send(:stats, len)
-    loop()
+    message_queue_len = Process.info(self(), :message_queue_len)
+    send(:stats, message_queue_len)
+    selective_receive()
   end
 
-  def test1() do
-    loop_pid = spawn(&Reciever.loop/0)
-    Process.register(spawn(fn -> stats(50_000) end), :stats)
-    send_messages(loop_pid, "scnenario1_test", 50000)
+  def test1(total_messages) do
+    loop_pid = spawn(&Reciever.selective_receive/0)
+    Process.register(spawn(fn -> stats(total_messages) end), :stats)
+    send_messages(loop_pid, "scnenario1_test", total_messages)
   end
 
   defp send_messages(pid, msg, total_messages) do
@@ -25,7 +25,7 @@ defmodule Reciever do
       fn _ ->
         send(pid, msg <> "_some_binary")
       end,
-      max_concurrency: 500
+      max_concurrency: 300
     )
     |> Enum.map(fn x -> x end)
 
@@ -34,18 +34,20 @@ defmodule Reciever do
 
   def stats(num) do
     ts1 = Time.utc_now()
-    {:ok, fd} = File.open("/tmp/bench", [:delayed_write, :append])
 
-    details =
+    queue_sizes =
       Enum.map(1..num, fn _ ->
         receive do
-          length -> IO.puts(fd, "#{length}")
+          {:message_queue_len, len} -> len
         end
       end)
 
-    File.close(fd)
     ts2 = Time.utc_now()
     diff = Time.diff(ts2, ts1, :microsecond)
-    IO.puts("Time spent #{diff}")
+    sum = Enum.sum(queue_sizes)
+
+    IO.puts(
+      "Time spent #{diff}. Avg queue size: #{sum / num}. Max queue size: #{Enum.max(queue_sizes)}"
+    )
   end
 end
